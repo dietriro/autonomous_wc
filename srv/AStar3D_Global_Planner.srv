@@ -1,0 +1,5 @@
+Costmap2D map
+geometry_msgs/PoseStamped start
+geometry_msgs/PoseStamped goal
+---
+geometry_msgs/PoseArray path
