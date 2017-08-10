@@ -12,6 +12,10 @@ from Costmap3D import Costmap3D
 import numpy as np
 import scipy.io as sio
 
+last_start = None
+last_goal = None
+last_path = None
+
 
 def pose_to_pose2d(pose_stamped):
     # Convert quaternion to euler angles
@@ -35,8 +39,6 @@ def pose2d_to_pose(pose2d):
     # Convert euler angles to quaternion
     quaternion = transformations.quaternion_from_euler(0, 0, pose2d.theta)
     
-    print(quaternion)
-    
     # Create Pose
     pose = Pose()
     pose.position.x = pose2d.x
@@ -51,20 +53,30 @@ def pose2d_to_pose(pose2d):
 
 
 def handle_get_path(req):
+    global last_path, last_goal, last_start
     print('Service called, path planner is executed.')
     
     # Initialize np map
     exp_map_values = np.load('/home/robin/catkin_ws/src/osu_research/autonomous_wc/data/costmap3d.npy')
-    exp_map = Costmap3D(req.map.resolution, [req.map.height, req.map.width], values=exp_map_values)
+    exp_map = Costmap3D(req.map.resolution, [req.map.width, req.map.height], values=exp_map_values)
     cost_map = np.zeros((req.map.width, req.map.height), int)
     print(cost_map.shape)
-    x = 0
+    
+    # Check for old path
+    start = pose_to_pose2d(req.start)
+    goal = pose_to_pose2d(req.goal)
+    
+    if last_path is not None:
+        if exp_map.get_cell_index(start.x, start.y, start.theta) == exp_map.get_cell_index(last_start.x, last_start.y, last_start.theta) and \
+                        exp_map.get_cell_index(goal.x, goal.y, goal.theta) == exp_map.get_cell_index(last_goal.x, last_goal.y, last_goal.theta):
+            print('Returned last path')
+            return last_path
     
     # Convert 2d-array map to np map
     for y in range(req.map.height):
         for x in range(req.map.width):
-            cost_map[x, y] = req.map.data[y*req.map.height+x]
-        
+            cost_map[x, y] = req.map.data[y*req.map.width+x]
+
     # TODO: Set correct threshold
     # cost_map[cost_map < 200] = 0
     # cost_map[cost_map == 255] = 0
@@ -90,7 +102,7 @@ def handle_get_path(req):
     if path is None:
         return PoseArray()
     
-    print(path)
+    # print(path)
     
     pose_path = PoseArray()
     pose_path.header.stamp = rospy.get_rostime()
@@ -104,12 +116,16 @@ def handle_get_path(req):
         new_pose.position.x *= 0.05
         new_pose.position.y *= 0.05
         
-        print(new_pose.position)
+        # print(new_pose.position)
 
         # Append it to the pose path
         pose_path.poses.append(new_pose)
         
     print('Service successfully completed.')
+    
+    last_start = start
+    last_goal = goal
+    last_path = pose_path
     
     return pose_path
 

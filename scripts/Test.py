@@ -1,5 +1,7 @@
 import numpy as np
 from numpy import pi
+from Node import Node
+from copy import copy
 
 # a = 6.5
 #
@@ -27,5 +29,8 @@ from numpy import pi
 # np.save('/home/robin/catkin_ws/src/osu_research/autonomous_wc/data/costmap3d.npy', a)
 
 
-for i in range(-5, 6):
-    print(i)
+a = Node(1)
+
+b = copy(a)
+a.id = 3
+print(b.id)

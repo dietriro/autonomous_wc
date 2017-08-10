@@ -39,7 +39,7 @@ class GlobalPlannerCostmap3D : public nav_core::BaseGlobalPlanner {
     ros::ServiceClient client_path_planner_;
     // std::vector<int(*)[4]> costmap3d_;
     autonomous_wc::Costmap2D costmap2d_;
-
+    
   private:
 
     

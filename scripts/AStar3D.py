@@ -7,6 +7,7 @@ from math import floor, atan2
 from geometry_msgs.msg import Pose2D, Pose, PoseArray
 from Costmap3D import Costmap3D
 import scipy.io as sio
+from copy import copy
 
 import rospy
 from nav_msgs.msg import OccupancyGrid
@@ -73,6 +74,8 @@ class AStar3D:
         self.map = map
         self.open = PriorityQueue(open_size)
         self.closed = PriorityQueue(closed_size)
+        self.back_open = PriorityQueue(open_size)
+        self.back_closed = PriorityQueue(closed_size)
         self.epsilon = epsilon
         self.r_max = r_max
         self.v = v
@@ -165,29 +168,29 @@ class AStar3D:
     #     # print('TRUE')
     #     return True
         
-    def get_node(self, index):
+    def get_node(self, index, open, closed):
         '''
         Checks whether a Node with the given id is listed in the queue.
         :param queue: The queue that is searched.
         :param index: The id of the Node that is searched for.
         :return: Either True or False, depending on the success.
         '''
-        for n in self.open.queue:
+        for n in open.queue:
             if n.id == index:
-                return n
-        for n in self.closed.queue:
+                return copy(n)
+        for n in closed.queue:
             if n.id == index:
-                return n
+                return copy(n)
         return None
     
-    def update_node(self, n_cur, n_nbr):
+    def update_node(self, n_cur, n_nbr, open, closed):
         '''
         Updates the g and parent value of a node within the open queue, in case the g value is smaller than the old one.
         :param n_new: The node with the new values.
         :return: True, if the node was found, false if not.
         '''
         g_old = n_nbr.g
-        parent = self.get_node(n_cur.parent)
+        parent = self.get_node(n_cur.parent, open, closed)
         
         # # Check for line of sight to parent
         # if self.line_of_sight(parent.id, n_nbr.id):
@@ -196,9 +199,9 @@ class AStar3D:
         self.compute_cost(n_cur, n_nbr)
             
         if n_nbr.g < g_old:
-            if n_nbr in self.open.queue:
-                self.open.queue.remove(n_nbr)
-            self.open.put(Node(n_nbr.id, pos=n_nbr.pos, g=n_nbr.g, h=n_nbr.h,
+            if n_nbr in open.queue:
+                open.queue.remove(n_nbr)
+            open.put(Node(n_nbr.id, pos=n_nbr.pos, g=n_nbr.g, h=n_nbr.h,
                                o=n_nbr.o, parent=n_nbr.parent, t=n_nbr.t, c=n_nbr.c))
     
     def compute_cost(self, n_cur, n_nbr):
@@ -215,7 +218,7 @@ class AStar3D:
         :param id_goal: The id of the goal node.
         :return:
         '''
-        return self.h_euc(start, goal)
+        return self.h_euc(start, goal) + 20*abs(start[2]-goal[2])
     
     def id_from_pos(self, pos):
         '''
@@ -231,8 +234,8 @@ class AStar3D:
         :param index: The index of the node within the map.
         :return: The position (x,y) of the node within the map.
         '''
-        x = floor(index / self.map.shape[1])
-        y = index % self.map.shape[1]
+        x = floor(index / self.map.values.shape[1])
+        y = index % self.map.values.shape[1]
         return np.array([x, y])
         
     def h_euc(self, start, goal):
@@ -284,17 +287,47 @@ class AStar3D:
             nbrs.append(Node(self.id_from_pos(new_pose), parent=node.id, pos=new_pose,
                              c=self.map.values[new_pose[0], new_pose[1], new_pose[2]]))
         return nbrs
+
+    def get_back_neighbors(self, node):
+        '''
+        Finds all valid neighbors for a given node.
+        :param node: The node for which to find the neighbors.
+        :return: A list of nodes that are neighbors of the given node.
+        '''
+        nbrs = list()
+        if node.pos[2] > 1:
+            node_orientation = node.pos[2]-2
+        else:
+            node_orientation = node.pos[2]+2
+
+        for i in range(self.actions.shape[1]):
+            new_pose = self.actions[node_orientation, i, :] + node.pos
+        
+            # Set angular index to maximum if below 0
+            if new_pose[2] < 0:
+                new_pose[2] = self.map.values.shape[2] - 1
+            elif new_pose[2] >= self.map.values.shape[2]:
+                new_pose[2] = 0
+        
+            # Check if new node's position is within the map
+            if not self.map.is_valid(new_pose):
+                continue
+        
+            # If new position is valid, create a new node using the parent nodes values
+            nbrs.append(Node(self.id_from_pos(new_pose), parent=node.id, pos=new_pose,
+                             c=self.map.values[new_pose[0], new_pose[1], new_pose[2]]))
+        return nbrs
     
-    def get_g(self, index):
+    def get_g(self, index, open, closed):
         '''
         Returns the g value from a node using open/closed queue.
         :param index: The index of the node the g value is requested from.
         :return: The g value if the specified node.
         '''
-        for n in self.open.queue:
+        for n in open.queue:
             if n.id == index:
                 return n.g
-        for n in self.closed.queue:
+        for n in closed.queue:
             if n.id == index:
                 return n.g
         return None
@@ -310,10 +343,19 @@ class AStar3D:
         pose2d = Pose2D()
         pose2d.x = node.pos[0]
         pose2d.y = node.pos[1]
-        pose2d.theta = node.o
+        pose2d.theta = node.pos[2]
         
         return pose2d
         
+    def publish_progress(self, progress):
+        og = OccupancyGrid()
+        og.info.height = self.map.values.shape[1]
+        og.info.width = self.map.values.shape[0]
+        og.info.resolution = 0.05
+        og.data = progress.transpose().flatten()
+    
+        self.pub_progress.publish(og)
+
     def print_path(self, path, cost):
         '''
         Inserts the path into the map and prints it.
@@ -360,7 +402,9 @@ class AStar3D:
             print('Goal position out of map bounds.')
             return
         
-        progress = np.zeros((200, 200), np.int8)
+        progress = np.zeros((self.map.values.shape[0], self.map.values.shape[1]), np.int8)
+
+        found_connection = False
             
         # Save start/goal pos as node
         n_s = Node(self.id_from_pos(start), pos=start, h=self.h_euc(start, goal),
@@ -368,56 +412,107 @@ class AStar3D:
                    c=self.map.values[start[0], start[1], start[2]])
         n_g = Node(self.id_from_pos(goal), pos=goal)
         
-        # Set current node equal to start node
+        # Save start/goal pose for other direction
+        n_back_s = Node(self.id_from_pos(goal), pos=goal, h=self.h_euc(start, goal),
+                        c=self.map.values[goal[0], goal[1], goal[2]])
+        n_back_g = Node(self.id_from_pos(start), pos=start)
+
+        
+        # Push back start nodes for both directions
         self.open.put(n_s)
+        self.back_open.put(n_back_s)
         
         print('Start finding path...')
         
         # Loop until goal reached
-        while not self.open.empty():
+        while not self.open.empty() and not self.back_open.empty():
             # Get best node
             n_cur = self.open.get()
+            n_back_cur = self.back_open.get()
             
             progress[n_cur.pos[0], n_cur.pos[1]] += 25
+            progress[n_back_cur.pos[0], n_back_cur.pos[1]] += 25
             
-            og = OccupancyGrid()
-            og.info.height = 200
-            og.info.width = 200
-            og.info.resolution = 0.05
-            og.data = progress.transpose().flatten()
+            self.publish_progress(progress)
             
-            self.pub_progress.publish(og)
-
             if n_cur.id == n_g.id:
-                print('GOAL FOUUUUUND!!!')
+                print('GOAL FOUND!')
                 break
             
             # Add current node to closed list
             self.closed.put(n_cur)
+            self.back_closed.put(n_back_cur)
+            
+            ### FORWARD
             # Get a list of all neighboring nodes
             nbrs = self.get_neighbors(n_cur)
+            
             # Loop through neighboring nodes
             for n_nbr in nbrs:
+                if n_nbr in self.back_open.queue:
+                    n_back_cur = self.get_node(n_nbr.id, self.back_open, self.back_closed)
+                    n_cur = copy(n_nbr)
+                    found_connection = True
+                    break
                 if not n_nbr in self.closed.queue:
                     if not n_nbr in self.open.queue:
                         n_nbr.g = np.inf
                         n_nbr.parent = None
                         n_nbr.h = self.h_euc(n_nbr.pos, goal)
-                    self.update_node(n_cur, n_nbr)
+                    self.update_node(n_cur, n_nbr, self.open, self.closed)
+                    
+            if found_connection:
+                break
+
+            ### FORWARD
+            # Get a list of all neighboring nodes
+            nbrs = self.get_back_neighbors(n_back_cur)
+
+            # Loop through neighboring nodes
+            for n_nbr in nbrs:
+                if n_nbr in self.open.queue:
+                    n_cur = self.get_node(n_nbr.id, self.open, self.closed)
+                    n_back_cur = copy(n_nbr)
+                    found_connection = True
+                    break
+                if not n_nbr in self.back_closed.queue:
+                    if not n_nbr in self.back_open.queue:
+                        n_nbr.g = np.inf
+                        n_nbr.parent = None
+                        n_nbr.h = self.h_euc(n_nbr.pos, n_g.pos)
+                    self.update_node(n_back_cur, n_nbr, self.back_open, self.back_closed)
+
+            if found_connection:
+                break
             
         print('Finished path search.')
         
         # Follow path back
-        print('INT PATH: ')
-        print(n_cur.pos)
-        n_cur.pos[2] *= 0.5*np.pi
-        path = [self.pose2d(n_cur)]
+        # print('INT PATH: ')
+        # print(n_cur.pos)
+
+        n_back_cur.pos[2] *= 0.5*np.pi
+        path = [self.pose2d(n_back_cur)]
         cost = 0.0
+        while n_back_cur.id != n_g.id:
+            # Change current node to parent node
+            n_back_cur = self.get_node(n_back_cur.parent, self.back_open, self.back_closed)
+            n_back_cur.pos = n_back_cur.pos.astype(float)
+            n_back_cur.pos[2] *= 0.5 * np.pi
+            # print(n_back_cur.pos)
+
+            # Append current position to path
+            path.append(self.pose2d(n_back_cur))
+            # Update cost
+            cost += n_back_cur.t
+        
+        path.reverse()
         while n_cur.id != n_s.id:
             # Change current node to parent node
-            n_cur = self.get_node(n_cur.parent)
+            n_cur = self.get_node(n_cur.parent, self.open, self.closed)
+            n_cur.pos = n_cur.pos.astype(float)
             n_cur.pos[2] *= 0.5 * np.pi
-            print(n_cur.pos)
+            # print(n_cur.pos)
 
             # Append current position to path
             path.append(self.pose2d(n_cur))
@@ -427,7 +522,7 @@ class AStar3D:
         # self.print_path(path, cost)
         
         path.reverse()
-        
+
         return path
         
         

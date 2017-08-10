@@ -2,7 +2,7 @@
 
 import numpy as np
 
-EXP_FACTOR = 4
+EXP_FACTOR = 10
 
 class Node:
     id = -1

@@ -35,7 +35,7 @@ def cb_costmap(msg):
     
     
 def cb_pose_update(msg):
-    global exp_map, inc_value , pub_progress
+    global exp_map, inc_value , pub_progress, size, resolution
     
     if exp_map is not None:
         exp_map.inc_cell_value(msg.pose.pose.position.x, msg.pose.pose.position.y, quat_to_euler(msg.pose.pose.orientation), inc_value)
@@ -58,9 +58,9 @@ def cb_pose_update(msg):
         values *= 100
 
         og = OccupancyGrid()
-        og.info.height = 200
-        og.info.width = 200
-        og.info.resolution = 0.05
+        og.info.height = size[1]
+        og.info.width = size[0]
+        og.info.resolution = resolution
         og.data = values.astype(np.int8).transpose().flatten()
 
         pub_progress.publish(og)
@@ -90,7 +90,7 @@ if __name__ == '__main__':
     pub_progress = rospy.Publisher('/astar', OccupancyGrid, queue_size=10)
 
     # Subscriber
-    rospy.Subscriber('/move_base/global_costmap/costmap', OccupancyGrid, cb_costmap)
+    rospy.Subscriber('/move_base_node/global_costmap/costmap', OccupancyGrid, cb_costmap)
     rospy.Subscriber('/amcl_pose', PoseWithCovarianceStamped, cb_pose_update)
     
     rospy.loginfo('Initialized ROS successfully!')
