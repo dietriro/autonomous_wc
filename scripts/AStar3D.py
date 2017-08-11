@@ -485,6 +485,10 @@ class AStar3D:
             if found_connection:
                 break
             
+        # Update final cell in progress map
+        progress[n_cur.pos[0], n_cur.pos[1]] += 25
+        self.publish_progress(progress)
+
         print('Finished path search.')
         
         # Follow path back

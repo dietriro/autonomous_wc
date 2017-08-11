@@ -130,7 +130,7 @@ class Costmap3D:
             return False
         
         # Check for occupancy of pose
-        if self.values[pose[0], pose[1], pose[2]] > 127:
+        if self.values[pose[0], pose[1], pose[2]] > 252:
             return False
         
         return True

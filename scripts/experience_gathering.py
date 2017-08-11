@@ -8,7 +8,7 @@ from tf import transformations
 from nav_msgs.msg import OccupancyGrid
 from geometry_msgs.msg import PoseWithCovarianceStamped
 
-data_path = '/home/robin/catkin_ws/src/osu_research/autonomous_wc/data/costmap3d.npy'
+data_path = '/home/robin/catkin_ws/src/osu_research/autonomous_wc/data/costmap3d_rodgers.npy'
 resolution = None
 size = None
 exp_map = None

@@ -57,7 +57,7 @@ def handle_get_path(req):
     print('Service called, path planner is executed.')
     
     # Initialize np map
-    exp_map_values = np.load('/home/robin/catkin_ws/src/osu_research/autonomous_wc/data/costmap3d.npy')
+    exp_map_values = np.load('/home/robin/catkin_ws/src/osu_research/autonomous_wc/data/costmap3d_rodgers.npy')
     exp_map = Costmap3D(req.map.resolution, [req.map.width, req.map.height], values=exp_map_values)
     cost_map = np.zeros((req.map.width, req.map.height), int)
     print(cost_map.shape)
