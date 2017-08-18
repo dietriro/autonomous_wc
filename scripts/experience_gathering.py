@@ -8,7 +8,7 @@ from tf import transformations
 from nav_msgs.msg import OccupancyGrid
 from geometry_msgs.msg import PoseWithCovarianceStamped
 
-data_path = '/home/robin/catkin_ws/src/osu_research/autonomous_wc/data/costmap3d_rodgers.npy'
+data_path = '/home/robin/catkin_ws/src/osu_research/autonomous_wc/data/costmap3d_sim.npy'
 resolution = None
 size = None
 exp_map = None
@@ -90,7 +90,8 @@ if __name__ == '__main__':
     pub_progress = rospy.Publisher('/astar', OccupancyGrid, queue_size=10)
 
     # Subscriber
-    rospy.Subscriber('/move_base_node/global_costmap/costmap', OccupancyGrid, cb_costmap)
+    # rospy.Subscriber('/move_base_node/global_costmap/costmap', OccupancyGrid, cb_costmap)
+    rospy.Subscriber('/move_base/global_costmap/costmap', OccupancyGrid, cb_costmap)
     rospy.Subscriber('/amcl_pose', PoseWithCovarianceStamped, cb_pose_update)
     
     rospy.loginfo('Initialized ROS successfully!')

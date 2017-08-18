@@ -3,6 +3,7 @@
 # ROS
 import rospy
 from geometry_msgs.msg import Pose, Pose2D, PoseStamped, PoseArray
+from nav_msgs.msg import Path
 from tf import transformations
 from autonomous_wc.srv import *
 # Local
@@ -53,11 +54,11 @@ def pose2d_to_pose(pose2d):
 
 
 def handle_get_path(req):
-    global last_path, last_goal, last_start
+    global last_path, last_goal, last_start, pub_path
     print('Service called, path planner is executed.')
     
     # Initialize np map
-    exp_map_values = np.load('/home/robin/catkin_ws/src/osu_research/autonomous_wc/data/costmap3d_rodgers.npy')
+    exp_map_values = np.load('/home/robin/catkin_ws/src/osu_research/autonomous_wc/data/costmap3d_sim.npy')
     exp_map = Costmap3D(req.map.resolution, [req.map.width, req.map.height], values=exp_map_values)
     cost_map = np.zeros((req.map.width, req.map.height), int)
     print(cost_map.shape)
@@ -87,7 +88,7 @@ def handle_get_path(req):
     exp_map.values[exp_map.values<0] = 0
     exp_map.values[exp_map.values>254] = 254
 
-    sio.savemat('/home/robin/catkin_ws/src/osu_research/autonomous_wc/data/costmap3d_fusion.npy', {'map': exp_map.values})
+    sio.savemat('/home/robin/catkin_ws/src/osu_research/autonomous_wc/data/costmap3d_sim', {'exp_map': exp_map.values, 'cost_map': cost_map})
 
     # mat = sio.loadmat('/home/robin/catkin_ws/src/osu_research/autonomous_wc/data/costmap3d_modified')
     # exp_map.values = mat['map']
@@ -104,22 +105,39 @@ def handle_get_path(req):
     
     # print(path)
     
+    out_path = Path()
+    out_path.header.stamp = rospy.get_rostime()
+    out_path.header.frame_id = req.start.header.frame_id
+    
     pose_path = PoseArray()
     pose_path.header.stamp = rospy.get_rostime()
     pose_path.header.frame_id = req.start.header.frame_id
     pose_path.header.seq = 1
+    
+    seq = 0
+    
     for pose2d in path:
+        seq += 1
+        
         # Create new PoseStamped from Pose2D
+        new_pose_st = PoseStamped()
+        new_pose_st.header = out_path.header
+        new_pose_st.header.seq = seq
         new_pose = Pose()
 
         new_pose = pose2d_to_pose(pose2d)
         new_pose.position.x *= 0.05
         new_pose.position.y *= 0.05
         
+        new_pose_st.pose = new_pose
+        
         # print(new_pose.position)
 
         # Append it to the pose path
         pose_path.poses.append(new_pose)
+        out_path.poses.append(new_pose_st)
+        
+    pub_path.publish(out_path)
         
     print('Service successfully completed.')
     
@@ -142,7 +160,7 @@ if __name__ == '__main__':
     # sub_sensor_data = rospy.Subscriber('/robot0/laser_0', LaserScan, cb_sensor_data)
     
     # Publisher
-    # pub_pose_est = rospy.Publisher('/rt_local_dnn/robot0/pose', PoseStamped, queue_size=10)
+    pub_path = rospy.Publisher('/global_path', Path, queue_size=10)
     
     # Register function that is called before shutdown
     # rospy.on_shutdown(sess.close)
