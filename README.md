@@ -1,4 +1,4 @@
-# Research: Autonomous Wheelchair
+# Autonomous Wheelchair
 
 ## Project Description
 
